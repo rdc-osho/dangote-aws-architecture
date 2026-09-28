@@ -8,13 +8,60 @@ Instead of building a generic "e-commerce app on AWS" demo, I picked a real comp
 
 This project also connects directly to my next step: an MSc in Data Science and Artificial Intelligence. Two parts of this build, the sentiment analysis on maintenance logs (Amazon Comprehend) and the shipping delay forecasting model (Amazon SageMaker Canvas), are both applied machine learning, and completing them hands on gave me a much clearer, practical understanding of what AI in a cloud environment actually looks like before starting the degree.
 
+## Architecture
+
+Traffic flow: users reach an Auto Scaling group of EC2 instances spread across two Availability Zones inside a VPC, backed by an RDS MySQL database. S3 stores data with lifecycle rules and receives CloudTrail audit logs. CloudWatch, SNS and Lambda handle monitoring and automated response, while Comprehend and SageMaker Canvas provide the AI analysis.
+
+```mermaid
+flowchart TB
+    U["Users"]
+    subgraph CLOUD["AWS Cloud - region us-east-1"]
+        subgraph VPC["VPC"]
+            ASG["Auto Scaling group<br/>1 / 1 / 3 - 70% CPU target"]
+            subgraph AZA["us-east-1a - private subnet"]
+                E1["EC2 instance"]
+            end
+            subgraph AZB["us-east-1b - private subnet"]
+                E2["EC2 instance"]
+            end
+            RDS[("RDS MySQL<br/>primary database")]
+        end
+    end
+    S3["S3<br/>versioned + lifecycle"]
+    CT["CloudTrail<br/>audit logs to S3"]
+    OPS["CloudWatch - SNS - Lambda<br/>alarm, alert, respond"]
+    COMP["Comprehend<br/>log sentiment"]
+    SM["SageMaker Canvas<br/>shipping forecast"]
+    IAM["IAM<br/>scoped roles"]
+    BUD["Budgets<br/>$5 alert + tags"]
+    U --> ASG
+    ASG --> E1
+    ASG --> E2
+    E1 --> RDS
+    E2 --> RDS
+    RDS -.->|backup| S3
+    CT -.-> S3
+    OPS -.->|monitors| ASG
+```
+
+The same build mapped to the five Well-Architected pillars:
+
+```mermaid
+flowchart LR
+    OE["Operational Excellence"] --> OES["CloudWatch alarm + SNS<br/>Lambda responder + Comprehend"]
+    SEC["Security"] --> SECS["IAM users and groups<br/>CloudTrail multi-region to S3"]
+    REL["Reliability"] --> RELS["S3 versioned + lifecycle, RDS MySQL<br/>SageMaker Canvas forecast"]
+    PERF["Performance Efficiency"] --> PERFS["EC2 launch template, ASG 1/1/3<br/>70% CPU across two AZs"]
+    COST["Cost Optimisation"] --> COSTS["Tags: Project, Dept, Country, Env<br/>Cost Explorer + $5 budget alert"]
+```
+
+> Next step: front the Auto Scaling group with an Application Load Balancer. The current design scales but has no single entry point or health-based routing.
+
 ## Overview
 
 This project is a 5-pillar AWS architecture case study built around real 2026 news about Dangote Group, a major Nigerian industrial conglomerate expanding its refinery operations. Rather than following a generic tutorial, this project identifies real operational challenges facing Dangote (equipment failures, security across multiple countries, unpredictable supply chains, scaling demands, and cost visibility) and designs AWS solutions for each one, structured around the official AWS Well-Architected Framework.
 
 ## Architecture Diagram
-
-![Dangote AWS Architecture](./dangote-architecture-diagram.png)
 
 ## The Five Pillars
 
@@ -53,22 +100,40 @@ This project is a 5-pillar AWS architecture case study built around real 2026 ne
 - **AWS Cost Explorer** — visibility into cost and usage patterns by service
 - **AWS Budgets** — monthly $5 budget alert with threshold notifications
 
-## Repository Structure
+## The incident (the part I'm most proud of)
+
+The build itself is five pillars of standard services. The part that taught me the most was a cost incident and the cleanup that followed.
+
+I left a SageMaker Canvas space running for about three weeks and picked up a four-figure bill. What made it hard was that the tools disagreed with each other:
+
+- The console showed **no apps running**, while the CLI showed the app still `InService`.
+- Deleting the Canvas **domain did not remove the underlying endpoint**.
+- A **stopped RDS instance auto-resumed after 7 days**, so "stopped" was not actually off.
+
+I found all of it through the AWS CLI in CloudShell rather than the console, then raised a support case and documented it:
+
+```bash
+aws sagemaker list-apps --region us-east-1
+aws sagemaker delete-app --domain-id <id> --app-type Canvas --user-profile-name <name>
+aws sagemaker delete-user-profile --domain-id <id> --user-profile-name <name>
+aws sagemaker delete-domain --domain-id <id>
+aws rds stop-db-instance --db-instance-identifier <id>
+aws ec2 terminate-instances --instance-ids <id>
+```
+
+The lesson: the console is a convenience layer, not the source of truth. When money is on the line, the API tells you what is actually running.
+
+## Repository structure
 
 ```
 dangote-aws-architecture/
 ├── README.md
-├── dangote-architecture-diagram.png
-├── pillar1-operational-excellence/
-├── pillar2-security/
-├── pillar3-reliability/
-├── pillar4-performance/
-└── pillar5-cost/
+├── /src         # Lambda function (incident responder, Python 3.12)
+├── /diagrams    # architecture + pillar diagrams
+└── /proof       # a few screenshots that prove it ran
 ```
 
-## Problems I Ran Into (and What They Taught Me)
-
-This project did not go smoothly from start to finish, and I think that is worth being upfront about.
+## What else I ran into
 
 - **Finding the right settings inside a large console.** More than once I lost time hunting for a specific field, like the Desired and Minimum capacity settings inside an Auto Scaling Group's edit page, because AWS's console buries settings in places that are not always intuitive for a beginner. I learned to use browser search (Cmd+F) inside the console itself to jump straight to a setting instead of scrolling blind.
 - **Auto Scaling Groups do not just stop when you tell them to.** I initially tried to stop the EC2 instance my Auto Scaling Group had launched, only to learn that the group will simply relaunch a new one to satisfy its Minimum capacity setting. The correct approach was setting both Desired and Minimum capacity to 0, which taught me that scaling groups actively enforce a state rather than just reacting to manual changes.
@@ -79,4 +144,4 @@ None of these were things I knew going in. Working through them, slowly, sometim
 
 ## About
 
-Built as a portfolio project to demonstrate practical, business-context-driven AWS architecture skills, part of a broader goal of transitioning into a Cloud AI Architect role.
+Built as a portfolio project to show practical, business-context-driven AWS architecture, as part of moving into a Cloud AI Architect role.
