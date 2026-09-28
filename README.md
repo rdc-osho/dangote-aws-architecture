@@ -128,10 +128,16 @@ The lesson: the console is a convenience layer, not the source of truth. When mo
 ```
 dangote-aws-architecture/
 ├── README.md
-├── /src         # Lambda function (incident responder, Python 3.12)
-├── /diagrams    # architecture + pillar diagrams
-└── /proof       # a few screenshots that prove it ran
+├── pillar1-operational-excellence/   # CloudWatch, SNS, Lambda, Comprehend (screenshots)
+├── pillar2-security/                 # IAM, CloudTrail (screenshots)
+├── pillar3-reliability/              # S3, RDS, SageMaker + the raw input data
+│   ├── refinery-ops-log.txt          # maintenance log fed to Comprehend
+│   └── crude-supply-data.csv         # shipping data fed to SageMaker Canvas
+├── pillar4-performance/              # EC2, Auto Scaling (screenshots)
+└── pillar5-cost/                     # tagging, Cost Explorer, Budgets
 ```
+
+Each pillar folder holds the console screenshots that prove the resources were built and running. The two input files in `pillar3-reliability` are the actual data the AI services ran against: a refinery maintenance log for Amazon Comprehend sentiment analysis, and a shipping dataset for the SageMaker Canvas forecast.
 
 ## What else I ran into
 
